@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ジャンル別レンタル品リスト（価格表示切替機能付き）</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .genre-buttons {
+            display: flex;
+            flex-wrap: wrap;
+        }
+        .genre-button {
+            padding: 10px 20px;
+            margin: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        .genre-button:hover {
+            background-color: #0056b3;
+        }
+        .genre-button.active {
+            background-color: #0056b3;
+        }
+        .price-toggle {
+            display: flex;
+            align-items: center;
+        }
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        input:checked + .slider {
+            background-color: #2196F3;
+        }
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        .toggle-label {
+            margin-left: 10px;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .genre-section {
+            display: none;
+        }
+        .genre-section.active {
+            display: block;
+        }
+        .genre-title {
+            font-size: 24px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #007bff;
+        }
+        .card {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        .card-header {
+            background-color: #f8f8f8;
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .card-title {
+            margin: 0;
+            font-size: 18px;
+        }
+        .card-total {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .card-content {
+            padding: 15px;
+        }
+        .items-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            padding: 10px;
+            border: 1px solid #eee;
+            border-radius: 4px;
+        }
+        .item img {
+            width: 80px;
+            height: 80px;
+            object-fit: cover;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            cursor: pointer;
+        }
+        .item-name {
+            font-weight: bold;
+            font-size: 14px;
+            margin: 0;
+        }
+        .item-quantity, .item-price, .item-total {
+            font-size: 12px;
+            color: #666;
+            margin: 2px 0;
+        }
+        .item-total {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .genre-total {
+            font-size: 18px;
+            font-weight: bold;
+            text-align: right;
+            margin-top: 20px;
+            color: #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="controls">
+            <div class="genre-buttons" role="tablist">
+                <button class="genre-button active" data-genre="飲食" role="tab" aria-selected="true">飲食</button>
+                <button class="genre-button" data-genre="講義室" role="tab" aria-selected="false">講義室</button>
+                <button class="genre-button" data-genre="学内企画" role="tab" aria-selected="false">学内企画</button>
+                <button class="genre-button" data-genre="合計" role="tab" aria-selected="false">合計</button>
+            </div>
+            <div class="price-toggle">
+                <label class="toggle-switch">
+                    <input type="checkbox" id="price-toggle" checked>
+                    <span class="slider"></span>
+                </label>
+                <span class="toggle-label">価格を表示</span>
+            </div>
+        </div>
+        <input type="text" id="search" placeholder="団体名で検索..." aria-label="団体名で検索">
+        <div id="genres-container"></div>
+    </div>
+
+    <script>
+        // レンタル品のマスターデータ（CSV形式）
+        const rentalItemsCsv = `
+id,name,price,imageUrl,link
+消火器,消火器,2750,https://www.nohmi.co.jp/product/fe/img/006.jpg,https://www.nohmi.co.jp/product/fe/img/006.jpg
+長方形テーブル　シングル,長方形テーブル　シングル,1320,https://event.kasite.net/sys_img/item/image1/ds08-00118-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00118&category=040105
+長方形テーブル　ワイド,長方形テーブル　ワイド,1540,https://event.kasite.net/sys_img/item/image1/ds08-00119-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00119&category=040105
+アイスボックス,アイスボックス,4400,https://event.kasite.net/sys_img/item/image1/e08-050100-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=e08-050100&category=040804
+フライヤーセット（LPガス用）,フライヤーセット（LPガス用）,13200,https://event.kasite.net/sys_img/item/image1/ds08-00427-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00427&category=040802
+台付鉄板焼器（LPガス用）,台付鉄板焼器（LPガス用）,15400,https://event.kasite.net/sys_img/item/image1/ds08-00419-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00419&category=040802
+アイスクリームストッカー(102L),アイスクリームストッカー(102L),9900,https://event.kasite.net/sys_img/item/image1/item000186-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=item000186&category=040804
+ホットショーケース,ホットショーケース,5500,https://event.kasite.net/sys_img/item/image1/ds08-00447-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00447&category=040801
+クーラーボックス(150L),クーラーボックス(150L),5500,https://event.kasite.net/sys_img/item/image1/ds08-00459-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00459&category=040804
+ガスコンロ(LPガス用)　大,ガスコンロ(LPガス用)　大,3300,https://event.kasite.net/sys_img/item/image1/ds08-00436-500.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00436&category=040802
+ポップコーン機,ポップコーン機,16500,https://event.kasite.net/sys_img/item/image1/ds08-00450-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00450&category=040801
+綿菓子機,綿菓子機,13200,https://event.kasite.net/sys_img/item/image1/ds08-00449-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00449&category=040801
+卓上鉄板焼器,卓上鉄板焼器,6600,https://event.kasite.net/sys_img/item/image1/ds08-00421-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00421&category=040802
+寸胴鍋 28L,寸胴鍋 28L,3300,https://event.kasite.net/sys_img/item/image1/ds08-00441-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00441&category=040802
+ホットプレート（LPガス用）,ホットプレート（LPガス用）,3080,https://event.kasite.net/sys_img/item/image1/ds08-00629-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00629&category=040802
+横幕 3k(白),横幕 3k(白),2310,https://event.kasite.net/sys_img/item/image1/ds08-00052-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00052&category=040103
+ピンスポット用自動ホイル,ピンスポット用自動ホイル,1650,https://event.kasite.net/sys_img/item/image1/ds0b-00007-main.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds0b-00007&category=040701
+ピンスポットライト,ピンスポットライト,3080,https://event.kasite.net/sys_img/item/image1/ds0b-00006-main.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds0b-00006&category=040701
+プロジェクター＆スクリーン30名用セット（ワイド対応）,プロジェクター＆スクリーン30名用セット（ワイド対応）,33000,https://event.kasite.net/sys_img/item/image1/item000402-500b.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=item000402&category=040501
+有線マイク,有線マイク,1100,https://event.kasite.net/sys_img/item/image1/ds0a-00003-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds0a-00003&category=040601
+ミラーボール（φ30cm）,ミラーボール（φ30cm）,8250,https://event.kasite.net/sys_img/item/image1/ds0b-00015-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds0b-00015&category=040701
+イレクターフェンス,イレクターフェンス,1650,https://event.kasite.net/sys_img/item/image1/item000124-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=item000124&category=040112
+プロジェクター＆スクリーン10名用セット（ワイド対応）,プロジェクター＆スクリーン10名用セット（ワイド対応）,26400,https://event.kasite.net/sys_img/item/image1/item000411-500.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=item000411&category=040501
+EZフレームパネル W900×H2100,EZフレームパネル W900×H2100,3300,https://event.kasite.net/sys_img/item/image1/e10-124279-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=e10-124279&category=040119
+パネルベース,パネルベース,550,https://event.kasite.net/sys_img/item/image1/e10-124106-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=e10-124106&category=040119
+AVテーブル用サイドクロス 大,AVテーブル用サイドクロス 大,1650,https://event.kasite.net/sys_img/item/image1/ds08-00551-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00551&category=040509
+衝立三折れ,衝立三折れ,8800,https://event.kasite.net/sys_img/item/image1/ds08-00180-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00180&category=040120
+業務用精密体重計,業務用精密体重計,4400,https://event.kasite.net/sys_img/item/image1/item000298-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=item000298&category=040906
+身長計,身長計,5500,https://event.kasite.net/sys_img/item/image1/item000297-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=item000297&category=040906
+クロススクリーン（3連）ブルー,クロススクリーン（3連）ブルー,6600,https://event.kasite.net/sys_img/item/image1/ds08-00177-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00177&category=040120
+コンパクトミスト発生機,コンパクトミスト発生機,10450,https://event.kasite.net/sys_img/item/image1/item000152-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=item000152&category=040115
+パーライト TOUR Z CAM LED,パーライト TOUR Z CAM LED,4400,https://event.kasite.net/sys_img/item/image1/item000375_500.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=item000375&category=040701
+プラスチックチェーン,プラスチックチェーン,440,https://event.kasite.net/sys_img/item/image1/item000126-main.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=item000126&category=040112
+プラスチック製パーテーション,プラスチック製パーテーション,330,https://event.kasite.net/sys_img/item/image1/item000125-main.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=item000125&category=040112
+プロジェクター（4000ルーメンクラス）WXGA対応,プロジェクター（4000ルーメンクラス）WXGA対応,27500,https://event.kasite.net/sys_img/item/image1/item000405-500.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=item000405&category=040501
+スピーカースタンド（ボーズ802・ラプソン用）,スピーカースタンド（ボーズ802・ラプソン用）,2200,https://event.kasite.net/sys_img/item/image1/ds0a-00021-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds0a-00021&category=040604
+無指向性スピーカーラプソン,無指向性スピーカーラプソン,38500,https://event.kasite.net/sys_img/item/image1/item000383-500-01.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=item000383&category=040604
+パワードミキサー6ch,パワードミキサー6ch,9900,https://event.kasite.net/sys_img/item/image1/ds0a-00066-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds0a-00066&category=040603
+ヴァンテアンパネル W1200×H1800,ヴァンテアンパネル W1200×H1800,3850,https://event.kasite.net/sys_img/item/image1/item000116-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=item000116&category=040119
+ワイヤーフック,ワイヤーフック,330,https://event.kasite.net/sys_img/item/image1/e10-120980-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=e10-120980&category=040119
+ヴァンテアンベース,ヴァンテアンベース,550,https://event.kasite.net/sys_img/item/image1/ds08-00535-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00535&category=040119
+EZ用アームライト,EZ用アームライト,1650,https://event.kasite.net/sys_img/item/image1/item000115_500.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=item000115&category=040119
+ディスプレイスタンド(W1142×D760×H1865mm),ディスプレイスタンド(W1142×D760×H1865mm),11000,https://event.kasite.net/sys_img/item/image1/ds0c-00043-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds0c-00043&category=040504
+プラズマディスプレイ 50型,プラズマディスプレイ 50型,66000,https://event.kasite.net/sys_img/item/image1/ds0c-00042-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds0c-00042&category=040504
+コルク銃,コルク銃,3300,https://event.kasite.net/sys_img/item/image1/ds08-00472-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00472&category=040809
+ジャンボ輪投げ（12本ポール）,ジャンボ輪投げ（12本ポール）,2860,https://event.kasite.net/sys_img/item/image1/ds05-00072-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds05-00072&category=040809
+抽選器大（1000発用）,抽選器大（1000発用）,5500,https://event.kasite.net/sys_img/item/image1/item000172-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=item000172&category=041205
+抽選玉,抽選玉,55,https://event.kasite.net/sys_img/item/image1/item000174-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=item000174&category=041205
+カネ,カネ,1430,https://event.kasite.net/sys_img/item/image1/item000175-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=item000175&category=041205
+横幕（透明）　２K,横幕（透明）　２K,1540,https://event.kasite.net/sys_img/item/image1/ds08-00051-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00051&category=040103
+横幕（透明）　５K,横幕（透明）　５K,3850,https://event.kasite.net/sys_img/item/image1/ds08-00054-300.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00054&category=040103
+カラーコーン,カラーコーン,220,https://event.kasite.net/sys_img/item/image1/ds08-00083-main.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00083&category=040112
+カラーコーン用ウエイト,カラーコーン用ウエイト,220,https://event.kasite.net/sys_img/item/image1/ds08-00084-main.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=ds08-00084&category=040112
+簡易ステージセット（アルミステージ）,簡易ステージセット（アルミステージ）,24200,https://event.kasite.net/sys_img/item/image1/item000350-500.jpg,https://event.kasite.net/kstsys/cart/Detail.do?code=item000350&category=040107
+
+        `.trim();
+
+        // CSVをパースしてオブジェクトに変換する関数
+        function parseRentalItemsCsv(csv) {
+            const lines = csv.split('\n');
+            const headers = lines[0].split(',');
+            const result = {};
+
+            for (let i = 1; i < lines.length; i++) {
+                const currentLine = lines[i].split(',');
+                const id = currentLine[0];
+                result[id] = {};
+                for (let j = 1; j < headers.length; j++) {
+                    const value = currentLine[j];
+                    result[id][headers[j]] = headers[j] === 'price' ? parseInt(value) : value;
+                }
+            }
+
+            return result;
+        }
+
+        // レンタル品のマスターデータをCSVからパースして生成
+        const rentalItems = parseRentalItemsCsv(rentalItemsCsv);
+
+        // 団体ごとのレンタル品利用データ
+        const organizations = [
+            
+            {
+                name: "イベント局/飲食担当",
+                genre: "飲食",
+                items: [
+                    { id: "アイスボックス", quantity: 2 },                    
+            ],
+            },
+            {
+                name: "イベント局/団体予備",
+                genre: "飲食",
+                items: [
+                    { id: "アイスボックス", quantity: 4 },
+                    { id: "長方形テーブル　ワイド", quantity: 4 },
+                    { id: "消火器", quantity: 3 },
+                    
+                ],
+            },
+            {
+                name: "岡本学研究室/ハッシュドポテト",
+                genre: "飲食",
+                items: [
+                    { id: "横幕 3k(白)", quantity: 1 },
+                    { id: "消火器", quantity: 1 },
+                    { id: "台付鉄板焼器（LPガス用）", quantity: 1 },
+                  
+                ],
+            },
+            {
+                name: "KAIT NLSC/たこ焼き",
+                genre: "飲食",
+                items: [
+                    { id: "横幕 3k(白)", quantity: 1 },
+                    { id: "消火器", quantity: 1 },
+                    { id: "アイスボックス", quantity: 3 },
+                    { id: "フライヤーセット（LPガス用）", quantity: 1 },
+                    { id: "長方形テーブル　ワイド", quantity: 2 },
+                    { id: "長方形テーブル　シングル", quantity: 1 },
+                ],
+            },
+            {
+                name: "KAITpia/揚げパン・ドリンク",
+                genre: "飲食",
+                items: [
+                    { id: "横幕 3k(白)", quantity: 1 },
+                    { id: "消火器", quantity: 1 },
+                    { id: "フライヤーセット（LPガス用）", quantity: 2 },
+                    { id: "アイスボックス", quantity: 3 },
+                    { id: "長方形テーブル　ワイド", quantity: 3 },
+                    { id: "アイスクリームストッカー(102L)", quantity: 2 },
+                ],
+            },
+            {
+                name: "kaitウィンタースポーツサークル/お好み焼き",
+                genre: "飲食",
+                items: [
+                    { id: "横幕 3k(白)", quantity: 1 },
+                    { id: "消火器", quantity: 1 },
+                    { id: "台付鉄板焼器（LPガス用）", quantity: 1 },
+                    { id: "アイスボックス", quantity: 3 },
+                    { id: "長方形テーブル　ワイド", quantity: 4 },
+                   
+                ],
+            },
+            {
+                name: "バトミントン部/サーターアンダギー・ドリンク",
+                genre: "飲食",
+                items: [
+                    { id: "横幕 3k(白)", quantity: 1 },
+                    { id: "消火器", quantity: 1 },
+                    { id: "フライヤーセット（LPガス用）", quantity: 1 },
+                    { id: "アイスボックス", quantity: 1 },
+                    { id: "クーラーボックス(150L)", quantity: 1 },
+                    { id: "アイスクリームストッカー(102L)", quantity: 1 },
+                    { id: "長方形テーブル　ワイド", quantity: 1 },
+                    { id: "長方形テーブル　シングル", quantity: 1 },
+
+                ],
+            },
+            {
+                name: "臨床工学技/フルーツ飴",
+                genre: "飲食",
+                items: [
+                    { id: "横幕 3k(白)", quantity: 1 },
+                    { id: "消火器", quantity: 1 },
+                    { id: "長方形テーブル　ワイド", quantity: 1 },
+                    { id: "長方形テーブル　シングル", quantity: 2 },
+
+                ],
+            },
+            {
+                name: "宮崎研究室/ポップコーン",
+                genre: "飲食",
+                items: [
+                    { id: "横幕 3k(白)", quantity: 1 },
+                    { id: "消火器", quantity: 1 },
+                    { id: "ポップコーン機", quantity: 2 },
+                    { id: "長方形テーブル　ワイド", quantity: 1 },
+                ],
+            },
+            {
+                name: "ラグビー部/やきそば・ドリンク",
+                genre: "飲食",
+                items: [
+                    { id: "横幕 3k(白)", quantity: 1 },
+                    { id: "消火器", quantity: 1 },
+                    { id: "クーラーボックス(150L)", quantity: 1 },
+                    { id: "台付鉄板焼器（LPガス用）", quantity: 1 },
+                    { id: "アイスボックス", quantity: 4 },
+                    { id: "長方形テーブル　シングル", quantity: 3 },
+                ],
+            },
+            {
+                name: "陳研究室/クレープ",
+                genre: "飲食",
+                items: [
+                    { id: "横幕 3k(白)", quantity: 1 },
+                    { id: "消火器", quantity: 1 },
+                    { id: "ホットプレート（LPガス用）", quantity: 2 },
+                    { id: "アイスクリームストッカー(102L)", quantity: 1 },
+                    { id: "アイスボックス", quantity: 1 },
+                    { id: "長方形テーブル　ワイド", quantity: 4 },
+                ],
+            },
+            {
+                name: "上田研究室/ポテトチップス",
+                genre: "飲食",
+                items: [
+                    { id: "横幕 3k(白)", quantity: 1 },
+                    { id: "消火器", quantity: 1 },
+                    { id: "長方形テーブル　ワイド", quantity: 2 },
+                    { id: "アイスボックス", quantity: 1 },
+                    { id: "フライヤーセット（LPガス用）", quantity: 1 },
+                    { id: "ホットショーケース", quantity: 1 },
+                ],
+            },
+            {
+                name: "体育会スキー部/唐揚げ・ドリンク",
+                genre: "飲食",
+                items: [
+                    { id: "横幕 3k(白)", quantity: 1 },
+                    { id: "消火器", quantity: 1 },
+                    { id: "クーラーボックス(150L)", quantity: 1 },
+                    { id: "アイスクリームストッカー(102L)", quantity: 1 },
+                    { id: "フライヤーセット（LPガス用）", quantity: 2 },
+                    { id: "長方形テーブル　ワイド", quantity: 2 },
+                    { id: "長方形テーブル　シングル", quantity: 2 },
+                ],
+            },
+            {
+                name: "塩川研究室/浜松餃子",
+                genre: "飲食",
+                items: [
+                    { id: "横幕 3k(白)", quantity: 1 },
+                    { id: "消火器", quantity: 1 },
+                    { id: "卓上鉄板焼器", quantity: 2 },
+                    { id: "アイスボックス", quantity: 3 },
+                    { id: "長方形テーブル　ワイド", quantity: 4 },
+                    { id: "ホットショーケース", quantity: 1 },
+                ],
+            },
+            {
+                name: "木村研究室/綿菓子",
+                genre: "飲食",
+                items: [
+                    { id: "横幕 3k(白)", quantity: 1 },
+                    { id: "消火器", quantity: 1 },
+                    { id: "綿菓子機", quantity: 2 },
+                    { id: "アイスボックス", quantity: 1 },
+                    { id: "長方形テーブル　ワイド", quantity: 4 },
+                ],
+            },
+            {
+                name: "岡本剛/フランクフルト",
+                genre: "飲食",
+                items: [
+                    { id: "横幕 3k(白)", quantity: 1 },
+                    { id: "消火器", quantity: 1 },
+                    { id: "ガスコンロ(LPガス用)　大", quantity: 1 },
+                    { id: "寸胴鍋 28L", quantity: 1 },
+                    { id: "ホットショーケース", quantity: 1 },
+                    { id: "台付鉄板焼器（LPガス用）", quantity: 1 },
+                    { id: "アイスボックス", quantity: 2 },
+                    { id: "アイスクリームストッカー(102L)", quantity: 1 },
+                    { id: "長方形テーブル　ワイド", quantity: 2 },
+                    { id: "長方形テーブル　シングル", quantity: 1 },
+                ],
+            },
+            {
+                name: "バレーボールサークル/ホットドッグ",
+                genre: "飲食",
+                items: [
+                    { id: "横幕 3k(白)", quantity: 1 },
+                    { id: "消火器", quantity: 1 },
+                    { id: "台付鉄板焼器（LPガス用）", quantity: 1 },
+                    { id: "アイスクリームストッカー(102L)", quantity: 1 },
+                    { id: "アイスボックス", quantity: 1 },
+                    { id: "クーラーボックス(150L)", quantity: 1 },
+                    { id: "長方形テーブル　シングル", quantity: 3 },
+                ],
+            },
+            {
+                name: "文芸部/豚汁",
+                genre: "飲食",
+                items: [
+                    { id: "横幕 3k(白)", quantity: 1 },
+                    { id: "消火器", quantity: 1 },
+                    { id: "ガスコンロ(LPガス用)　大", quantity: 2 },
+                    { id: "アイスボックス", quantity: 2 },
+                    { id: "寸胴鍋 28L", quantity: 2 },
+                    { id: "長方形テーブル　ワイド", quantity: 2 },
+                    { id: "長方形テーブル　シングル", quantity: 1 },
+                ],
+            },
+            //---講義室------------------------------------------------------------------
+            {
+                name: "作曲研究部",
+                genre: "講義室",
+                items: [
+                    { id: "ピンスポット用自動ホイル", quantity: 2 },
+                    { id: "ピンスポットライト", quantity: 2 },
+                    { id: "プロジェクター＆スクリーン30名用セット（ワイド対応）", quantity: 1 },
+                    { id: "有線マイク", quantity: 1 },
+                    { id: "ミラーボール（φ30cm）", quantity: 1 },
+                    
+                ],
+            },
+            {
+                name: "鉄道研究部",
+                genre: "講義室",
+                items: [
+                    { id: "イレクターフェンス", quantity: 110 },
+                    { id: "長方形テーブル　ワイド", quantity: 35 },
+                    { id: "プロジェクター＆スクリーン10名用セット（ワイド対応）", quantity: 1 },
+                   
+                ],
+            },
+            {
+                name: "PSE 平和的社会的",
+                genre: "講義室",
+                items: [
+                    { id: "EZフレームパネル W900×H2100", quantity: 12 },
+                    { id: "パネルベース", quantity: 24 },
+                   
+                ],
+            },
+            {
+                name: "漫画研究会",
+                genre: "講義室",
+                items: [
+                    { id: "AVテーブル用サイドクロス 大", quantity: 1 },
+                    { id: "衝立三折れ", quantity: 6 },
+                    
+                ],
+            },
+            {
+                name: "健康医療科学部　看護学科",
+                genre: "講義室",
+                items: [
+                    { id: "業務用精密体重計", quantity: 1 },
+                    { id: "身長計", quantity: 1 },
+                    
+                ],
+            },
+            {
+                name: "看護学科（国際交流企画）",
+                genre: "講義室",
+                items: [
+                    { id: "EZフレームパネル W900×H2100", quantity: 4 },
+                    { id: "パネルベース", quantity: 8 },
+                   
+                
+                ],
+            },
+            {
+                name: "放送研究部",
+                genre: "講義室",
+                items: [
+                    { id: "クロススクリーン（3連）ブルー", quantity: 2 },
+                    
+                   
+                ],
+            },
+            {
+                name: "北本研究室",
+                genre: "講義室",
+                items: [
+                    { id: "コンパクトミスト発生機", quantity: 1 },
+                    { id: "パーライト TOUR Z CAM LED", quantity: 3 },
+                    { id: "プラスチックチェーン", quantity: 2 },
+                    { id: "プラスチック製パーテーション", quantity: 10 },
+                    { id: "プロジェクター（4000ルーメンクラス）WXGA対応", quantity: 3 },
+                    { id: "スピーカースタンド（ボーズ802・ラプソン用）", quantity: 1 },
+                    { id: "無指向性スピーカーラプソン", quantity: 1 },
+                    { id: "パワードミキサー6ch", quantity: 1 },
+                   
+                ],
+            },
+            {
+                name: "Creatopia～メディアデザインサークル～",
+                genre: "講義室",
+                items: [
+                    { id: "ヴァンテアンパネル W1200×H1800", quantity: 4 },
+                    { id: "ワイヤーフック", quantity: 8 },
+                    { id: "ヴァンテアンベース", quantity: 6 },
+                    { id: "EZ用アームライト", quantity: 4 },
+                    
+                ],
+            },
+            {
+                name: "air team",
+                genre: "講義室",
+                items: [
+                    { id: "EZフレームパネル W900×H2100", quantity: 10 },
+                    { id: "EZ用アームライト", quantity: 20 },
+                    { id: "パネルベース", quantity: 11 },
+                   
+                    
+                ],
+            },
+            {
+                name: "山門・狩野研究室（KAIT Racing）",
+                genre: "講義室",
+                items: [
+                    { id: "ディスプレイスタンド(W1142×D760×H1865mm)", quantity: 1 },
+                    { id: "プラズマディスプレイ 50型", quantity: 1 },
+                   
+               
+                ],
+            },
+            //---学内企画-----------------------------------------------------------------------------------
+            {
+                name: "縁日",
+                genre: "学内企画",
+                items: [
+                    { id: "コルク銃", quantity: 4},
+                    { id: "ジャンボ輪投げ（12本ポール）", quantity: 2 },
+                    { id: "抽選器大（1000発用）", quantity: 1 },
+                    { id: "抽選玉", quantity: 10 },
+                    { id: "カネ", quantity: 1 },
+                    { id: "横幕（透明）　２K", quantity: 2 },
+                    { id: "横幕（透明）　５K", quantity: 2 },
+                    { id: "横幕 3k(白)", quantity: 1 },
+                   
+                ],
+            },
+            {
+                name: "ステージイベント",
+                genre: "学内企画",
+                items: [
+                    { id: "アイスボックス", quantity: 2 },
+                    { id: "EZフレームパネル W900×H2100", quantity: 42 },
+                    { id: "パネルベース", quantity: 43 },
+                    { id: "簡易ステージセット（アルミステージ）", quantity: 1 },
+                    { id: "カラーコーン", quantity: 11 },
+                    { id: "カラーコーン用ウエイト", quantity: 11 },
+                    { id: "イレクターフェンス", quantity: 15 },
+
+
+                    
+                ],
+            },
+            {
+                name: "ビンゴ",
+                genre: "学内企画",
+                items: [
+                    { id: "カラーコーン", quantity: 20 },
+                    
+                ],
+            },
+        ];
+
+        const genres = ["飲食", "講義室", "学内企画", "合計"];
+        let currentGenre = "飲食";
+        let showPrices = true;
+
+        function calculateTotalItems() {
+            const totalItems = {};
+            organizations.forEach(org => {
+                org.items.forEach(item => {
+                    const rentalItem = rentalItems[item.id];
+                    if (totalItems[item.id]) {
+                        totalItems[item.id].quantity += item.quantity;
+                    } else {
+                        totalItems[item.id] = { 
+                            ...rentalItem, 
+                            quantity: item.quantity
+                        };
+                    }
+                });
+            });
+            return Object.values(totalItems);
+        }
+
+        function calculateOrganizationTotal(org) {
+            return org.items.reduce((total, item) => {
+                const rentalItem = rentalItems[item.id];
+                return total + item.quantity * rentalItem.price;
+            }, 0);
+        }
+
+        function calculateGenreTotal(genre) {
+            return organizations
+                .filter(org => org.genre === genre)
+                .reduce((total, org) => total + calculateOrganizationTotal(org), 0);
+        }
+
+        function formatPrice(price) {
+            return new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' }).format(price);
+        }
+
+        function renderOrganizations(genre, searchTerm = '') {
+            const container = document.getElementById('genres-container');
+            container.innerHTML = '';
+
+            const genreSection = document.createElement('div');
+            genreSection.className = 'genre-section active';
+            genreSection.setAttribute('role', 'tabpanel');
+            genreSection.innerHTML = `<h2 class="genre-title">${genre}</h2>`;
+
+            if (genre === "合計") {
+                const totalItems = calculateTotalItems();
+                const totalAmount = totalItems.reduce((sum, item) => sum + item.quantity * item.price, 0);
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.innerHTML = `
+                    <div class="card-header">
+                        <h3 class="card-title">全レンタル品合計</h3>
+                        ${showPrices ? `<div class="card-total">合計: ${formatPrice(totalAmount)}</div>` : ''}
+                    </div>
+                    <div class="card-content">
+                        <div class="items-grid">
+                            ${totalItems.map(item => `
+                                <div class="item">
+                                    <a href="${item.link}" target="_blank" rel="noopener noreferrer">
+                                        <img src="${item.imageUrl}" alt="${item.name}">
+                                    </a>
+                                    <p class="item-name">${item.name}</p>
+                                    <p class="item-quantity">数量: ${item.quantity}個</p>
+                                    ${showPrices ? `
+                                        <p class="item-price">単価: ${formatPrice(item.price)}</p>
+                                        <p class="item-total">合計: ${formatPrice(item.quantity * item.price)}</p>
+                                    ` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+                genreSection.appendChild(card);
+            } else {
+                const genreOrgs = organizations.filter(org => 
+                    org.genre === genre && org.name.toLowerCase().includes(searchTerm.toLowerCase())
+                );
+
+                genreOrgs.forEach(org => {
+                    const orgTotal = calculateOrganizationTotal(org);
+                    const card = document.createElement('div');
+                    card.className = 'card';
+                    card.innerHTML = `
+                        <div class="card-header">
+                            <h3 class="card-title">${org.name}</h3>
+                            ${showPrices ? `<div class="card-total">合計: ${formatPrice(orgTotal)}</div>` : ''}
+                        </div>
+                        <div class="card-content">
+                            <div class="items-grid">
+                                ${org.items.map(item => {
+                                    const rentalItem = rentalItems[item.id];
+                                    return `
+                                        <div class="item">
+                                            <a href="${rentalItem.link}" target="_blank" rel="noopener noreferrer">
+                                                <img src="${rentalItem.imageUrl}" alt="${rentalItem.name}">
+                                            </a>
+                                            <p class="item-name">${rentalItem.name}</p>
+                                            <p class="item-quantity">数量: ${item.quantity}個</p>
+                                            ${showPrices ? `
+                                                <p class="item-price">単価: ${formatPrice(rentalItem.price)}</p>
+                                                <p class="item-total">合計: ${formatPrice(item.quantity * rentalItem.price)}</p>
+                                            ` : ''}
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                    genreSection.appendChild(card);
+                });
+
+                if (showPrices) {
+                    const genreTotal = calculateGenreTotal(genre);
+                    const genreTotalElement = document.createElement('div');
+                    genreTotalElement.className = 'genre-total';
+                    genreTotalElement.textContent = `${genre}ジャンル合計: ${formatPrice(genreTotal)}`;
+                    genreSection.appendChild(genreTotalElement);
+                }
+            }
+
+            container.appendChild(genreSection);
+        }
+
+        function updateDisplay() {
+            const searchTerm = document.getElementById('search').value;
+            renderOrganizations(currentGenre, searchTerm);
+        }
+
+        document.getElementById('search').addEventListener('input', updateDisplay);
+
+        document.querySelectorAll('.genre-button').forEach(button => {
+            button.addEventListener('click', function() {
+                currentGenre = this.dataset.genre;
+                document.querySelectorAll('.genre-button').forEach(btn => {
+                    btn.classList.remove('active');
+                    btn.setAttribute('aria-selected', 'false');
+                });
+                this.classList.add('active');
+                this.setAttribute('aria-selected', 'true');
+                updateDisplay();
+            });
+        });
+
+        document.getElementById('price-toggle').addEventListener('change', function() {
+            showPrices = this.checked;
+            updateDisplay();
+        });
+
+        // 初期表示
+        updateDisplay();
+    </script>
+</body>
+</html>
